@@ -1,0 +1,56 @@
+# Top-level Makefile for building cameraraw-AmigaOS4
+# Supports both Standard PowerPC and AmigaOne A1222 (Tabor e500v2 SPE) builds.
+
+SHELL = /bin/bash
+CROSS_COMPILE ?= ppc-amigaos-
+
+.PHONY: all standard a1222 library tools release clean help
+
+help:
+	@echo "cameraraw-AmigaOS4 Build System"
+	@echo "================================"
+	@echo "Targets:"
+	@echo "  all        - Build standard PowerPC & A1222 LibRaw, CLI tools, library & detection tool"
+	@echo "  standard   - Build standard PowerPC LibRaw static library and CLI tools"
+	@echo "  a1222      - Build A1222 SPE LibRaw static library and CLI tools"
+	@echo "  library    - Build cameraraw.library (standard & A1222) and test-library"
+	@echo "  tools      - Build architecture detection tool (detect_a1222)"
+	@echo "  release    - Package release into release/CameraRawLib_54.1.lha using update_release.py"
+	@echo "  clean      - Clean all build outputs and intermediate objects"
+
+all: standard a1222 library tools
+
+# 1. Standard PowerPC LibRaw Build (via Autotools)
+Makefile: configure
+	./configure --host=ppc-amigaos --disable-shared \
+		CXXFLAGS="-O2 -mcrt=newlib -athread=single" \
+		CFLAGS="-O2 -mcrt=newlib -athread=single" \
+		LDFLAGS="-mcrt=newlib -athread=single"
+
+standard: Makefile
+	$(MAKE) -f Makefile
+	$(CROSS_COMPILE)strip --strip-unneeded bin/dcraw_emu bin/raw-identify bin/simple_dcraw 2>/dev/null || true
+
+# 2. AmigaOne A1222 SPE Build
+a1222:
+	$(MAKE) -f Makefile.a1222 all tools
+
+# 3. cameraraw.library Shared Library Build
+library:
+	$(MAKE) -C cameraraw.library all
+
+# 4. Detection Tool
+tools:
+	$(MAKE) -C tools all
+
+# 5. Package Release
+release:
+	python3 update_release.py
+
+# 6. Clean all
+clean:
+	@if [ -f Makefile ]; then $(MAKE) distclean; fi
+	$(MAKE) -f Makefile.a1222 clean
+	$(MAKE) -C cameraraw.library clean
+	$(MAKE) -C tools clean
+	rm -rf bin/dcraw* bin/raw-* bin/simple_* bin/test-library*

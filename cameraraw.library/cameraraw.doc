@@ -1,0 +1,572 @@
+TABLE OF CONTENTS
+
+cameraraw.library/CameraRaw_Init
+cameraraw.library/CameraRaw_OpenFile
+cameraraw.library/CameraRaw_Unpack
+cameraraw.library/CameraRaw_Process
+cameraraw.library/CameraRaw_MakeMemImage
+cameraraw.library/CameraRaw_FreeMemImage
+cameraraw.library/CameraRaw_Recycle
+cameraraw.library/CameraRaw_Close
+cameraraw.library/CameraRaw_StrError
+cameraraw.library/CameraRaw_StrProgress
+cameraraw.library/CameraRaw_SetProgressHandler
+cameraraw.library/CameraRaw_OpenBuffer
+cameraraw.library/CameraRaw_PpmTiffWriter
+cameraraw.library/CameraRaw_UnpackThumb
+cameraraw.library/CameraRaw_ThumbWriter
+cameraraw.library/CameraRaw_GetMake
+cameraraw.library/CameraRaw_GetModel
+cameraraw.library/CameraRaw_ApplySettings
+cameraraw.library/CameraRaw_GetAperture
+cameraraw.library/CameraRaw_GetShutter
+cameraraw.library/CameraRaw_GetISO
+cameraraw.library/CameraRaw_GetFocalLength
+cameraraw.library/CameraRaw_GetLens
+cameraraw.library/CameraRaw_GetTimestamp
+
+cameraraw.library/CameraRaw_Init               cameraraw.library/CameraRaw_Init
+
+   NAME
+        CameraRaw_Init -- Initialize a new CameraRaw context handle.
+
+   SYNOPSIS
+        handle = CameraRaw_Init(flags);
+        APTR CameraRaw_Init(uint32);
+
+   FUNCTION
+        Allocates and initializes a new CameraRaw context handle. This handle
+        represents a wrapped LibRaw C++ class instance.
+
+   INPUTS
+        flags - Initialization configuration flags.
+                Currently supported:
+                - CAMERARAW_INIT_HALF_SIZE (1): Instructs the engine to
+                  decode images at half-size (faster, lower memory footprint).
+
+   RESULT
+        handle - An opaque pointer (APTR) to the CameraRaw context, or NULL
+                 on failure (e.g., out of memory).
+
+   SEE ALSO
+        CameraRaw_Close()
+
+cameraraw.library/CameraRaw_OpenFile       cameraraw.library/CameraRaw_OpenFile
+
+   NAME
+        CameraRaw_OpenFile -- Open a raw image file.
+
+   SYNOPSIS
+        error = CameraRaw_OpenFile(handle, filename);
+        int CameraRaw_OpenFile(APTR, const char *);
+
+   FUNCTION
+        Opens the specified RAW image file, parses the header, and reads basic
+        metadata. This must be called before unpacking and processing.
+
+   INPUTS
+        handle   - The CameraRaw context pointer returned by CameraRaw_Init().
+        filename - The OS file path of the RAW image file.
+
+   RESULT
+        error - 0 on success, or a LibRaw error code (negative number) on failure.
+                Common errors:
+                - LIBRAW_IO_ERROR: File open or read error.
+                - LIBRAW_FILE_UNSUPPORTED: Unknown/unsupported raw format.
+
+   SEE ALSO
+        CameraRaw_Init(), CameraRaw_OpenBuffer(), CameraRaw_Close()
+
+cameraraw.library/CameraRaw_Unpack           cameraraw.library/CameraRaw_Unpack
+
+   NAME
+        CameraRaw_Unpack -- Unpack raw image pixel data.
+
+   SYNOPSIS
+        error = CameraRaw_Unpack(handle);
+        int CameraRaw_Unpack(APTR);
+
+   FUNCTION
+        Extracts raw image metadata and decompresses the raw sensor pixel data into
+        internal memory. To prevent stack overflow on AmigaOS, this function
+        automatically spawns a dedicated 1 MB stack.
+
+   INPUTS
+        handle - The CameraRaw context pointer.
+
+   RESULT
+        error - 0 on success, or a LibRaw error code (negative number) on failure.
+
+   SEE ALSO
+        CameraRaw_OpenFile(), CameraRaw_Process()
+
+cameraraw.library/CameraRaw_Process         cameraraw.library/CameraRaw_Process
+
+   NAME
+        CameraRaw_Process -- Process and demosaic unpacked raw pixel data.
+
+   SYNOPSIS
+        error = CameraRaw_Process(handle);
+        int CameraRaw_Process(APTR);
+
+   FUNCTION
+        Processes the unpacked raw data (combines color channels, performs
+        demosaicing, applies white balance, auto-brightness, and exposure adjustments
+        according to active settings).
+        This function automatically runs on a dedicated 1 MB stack to avoid
+        stack overflow.
+
+   INPUTS
+        handle - The CameraRaw context pointer.
+
+   RESULT
+        error - 0 on success, or a LibRaw error code on failure.
+
+   SEE ALSO
+        CameraRaw_Unpack(), CameraRaw_ApplySettings(), CameraRaw_MakeMemImage()
+
+cameraraw.library/CameraRaw_MakeMemImage cameraraw.library/CameraRaw_MakeMemImage
+
+   NAME
+        CameraRaw_MakeMemImage -- Generate an RGB image in memory.
+
+   SYNOPSIS
+        memImage = CameraRaw_MakeMemImage(handle, errorcode);
+        APTR CameraRaw_MakeMemImage(APTR, int *);
+
+   FUNCTION
+        Allocates and populates a processed image structure (libraw_processed_image_t)
+        in memory containing the fully rendered RGB bitmap data.
+
+   INPUTS
+        handle    - The CameraRaw context pointer.
+        errorcode - Pointer to an integer to receive the status/error code.
+
+   RESULT
+        memImage - A pointer to a libraw_processed_image_t structure, or NULL
+                   on failure. The structure format is:
+                       typedef struct {
+                           int type; // 1 = Bitmap, 2 = JPEG stream
+                           unsigned short height, width, colors, bits;
+                           unsigned int data_size;
+                           unsigned char data[1]; // RGB bytes
+                       } libraw_processed_image_t;
+
+   SEE ALSO
+        CameraRaw_FreeMemImage(), CameraRaw_Process()
+
+cameraraw.library/CameraRaw_FreeMemImage cameraraw.library/CameraRaw_FreeMemImage
+
+   NAME
+        CameraRaw_FreeMemImage -- Free a processed image structure.
+
+   SYNOPSIS
+        CameraRaw_FreeMemImage(memImage);
+        void CameraRaw_FreeMemImage(APTR);
+
+   FUNCTION
+        Releases the memory allocated for a processed image structure returned
+        by CameraRaw_MakeMemImage().
+
+   INPUTS
+        memImage - The pointer to the libraw_processed_image_t structure to free.
+
+   SEE ALSO
+        CameraRaw_MakeMemImage()
+
+cameraraw.library/CameraRaw_Recycle         cameraraw.library/CameraRaw_Recycle
+
+   NAME
+        CameraRaw_Recycle -- Recycle the current context for reuse.
+
+   SYNOPSIS
+        CameraRaw_Recycle(handle);
+        void CameraRaw_Recycle(APTR);
+
+   FUNCTION
+        Frees internal image memory and structures from a previously opened file
+        while keeping the handle alive. This allows reusing the handle to open
+        a new file without re-allocating the engine context.
+
+   INPUTS
+        handle - The CameraRaw context pointer.
+
+   SEE ALSO
+        CameraRaw_OpenFile(), CameraRaw_Close()
+
+cameraraw.library/CameraRaw_Close             cameraraw.library/CameraRaw_Close
+
+   NAME
+        CameraRaw_Close -- Close and free a CameraRaw context.
+
+   SYNOPSIS
+        CameraRaw_Close(handle);
+        void CameraRaw_Close(APTR);
+
+   FUNCTION
+        Completely deallocates a CameraRaw engine context and all associated
+        allocated resources.
+
+   INPUTS
+        handle - The CameraRaw context pointer to free.
+
+   SEE ALSO
+        CameraRaw_Init()
+
+cameraraw.library/CameraRaw_StrError       cameraraw.library/CameraRaw_StrError
+
+   NAME
+        CameraRaw_StrError -- Get error message string.
+
+   SYNOPSIS
+        str = CameraRaw_StrError(errorcode);
+        const char *CameraRaw_StrError(int);
+
+   FUNCTION
+        Translates a negative LibRaw/CameraRaw error code into a human-readable,
+        NULL-terminated ASCII error string.
+
+   INPUTS
+        errorcode - The error status code.
+
+   RESULT
+        str - Pointer to static string describing the error.
+
+   SEE ALSO
+        CameraRaw_StrProgress()
+
+cameraraw.library/CameraRaw_StrProgress   cameraraw.library/CameraRaw_StrProgress
+
+   NAME
+        CameraRaw_StrProgress -- Get progress code name string.
+
+   SYNOPSIS
+        str = CameraRaw_StrProgress(progresscode);
+        const char *CameraRaw_StrProgress(int);
+
+   FUNCTION
+        Translates a progress status code (from progress callbacks) into a
+        readable string indicating the current phase of decoding/processing.
+
+   INPUTS
+        progresscode - The progress code integer.
+
+   RESULT
+        str - Pointer to static string describing the progress state.
+
+   SEE ALSO
+        CameraRaw_SetProgressHandler()
+
+cameraraw.library/CameraRaw_SetProgressHandler cameraraw.library/CameraRaw_SetProgressHandler
+
+   NAME
+        CameraRaw_SetProgressHandler -- Set decoder progress callback.
+
+   SYNOPSIS
+        CameraRaw_SetProgressHandler(handle, callback, callback_data);
+        void CameraRaw_SetProgressHandler(APTR, APTR, APTR);
+
+   FUNCTION
+        Registers a custom developer callback that is periodically invoked
+        during raw data decompression and rendering phases to track execution progress.
+
+   INPUTS
+        handle        - The CameraRaw context pointer.
+        callback      - Pointer to the callback function.
+                        Signature: int callback(void *data, enum LibRaw_progress stage, int iteration, int expected);
+        callback_data - Opaque data pointer passed as the first parameter to the callback.
+
+   SEE ALSO
+        CameraRaw_StrProgress()
+
+cameraraw.library/CameraRaw_OpenBuffer   cameraraw.library/CameraRaw_OpenBuffer
+
+   NAME
+        CameraRaw_OpenBuffer -- Open raw image from memory.
+
+   SYNOPSIS
+        error = CameraRaw_OpenBuffer(handle, buffer, size);
+        int CameraRaw_OpenBuffer(APTR, void *, uint32);
+
+   FUNCTION
+        Opens a raw image file directly from a preloaded memory buffer instead
+        of a physical file path.
+
+   INPUTS
+        handle - The CameraRaw context pointer.
+        buffer - Pointer to the memory buffer containing RAW file data.
+        size   - Size of the memory buffer in bytes.
+
+   RESULT
+        error - 0 on success, or a negative LibRaw error code on failure.
+
+   SEE ALSO
+        CameraRaw_OpenFile()
+
+cameraraw.library/CameraRaw_PpmTiffWriter cameraraw.library/CameraRaw_PpmTiffWriter
+
+   NAME
+        CameraRaw_PpmTiffWriter -- Output processed image to disk.
+
+   SYNOPSIS
+        error = CameraRaw_PpmTiffWriter(handle, filename);
+        int CameraRaw_PpmTiffWriter(APTR, const char *);
+
+   FUNCTION
+        Writes the processed image data directly to disk as a standard PPM/TIFF
+        file, depending on the file suffix.
+
+   INPUTS
+        handle   - The CameraRaw context pointer.
+        filename - Path to the destination file.
+
+   RESULT
+        error - 0 on success, or a negative error code on failure.
+
+   SEE ALSO
+        CameraRaw_Process()
+
+cameraraw.library/CameraRaw_UnpackThumb cameraraw.library/CameraRaw_UnpackThumb
+
+   NAME
+        CameraRaw_UnpackThumb -- Unpack embedded thumbnail.
+
+   SYNOPSIS
+        error = CameraRaw_UnpackThumb(handle);
+        int CameraRaw_UnpackThumb(APTR);
+
+   FUNCTION
+        Extracts the preview/thumbnail image embedded inside the RAW container
+        into internal library structures.
+
+   INPUTS
+        handle - The CameraRaw context pointer.
+
+   RESULT
+        error - 0 on success, or a negative error code on failure.
+
+   SEE ALSO
+        CameraRaw_ThumbWriter()
+
+cameraraw.library/CameraRaw_ThumbWriter cameraraw.library/CameraRaw_ThumbWriter
+
+   NAME
+        CameraRaw_ThumbWriter -- Save unpacked thumbnail to file.
+
+   SYNOPSIS
+        error = CameraRaw_ThumbWriter(handle, filename);
+        int CameraRaw_ThumbWriter(APTR, const char *);
+
+   FUNCTION
+        Writes the extracted thumbnail image directly to disk.
+
+   INPUTS
+        handle   - The CameraRaw context pointer.
+        filename - Destination file path.
+
+   RESULT
+        error - 0 on success, or negative error code on failure.
+
+   SEE ALSO
+        CameraRaw_UnpackThumb()
+
+cameraraw.library/CameraRaw_GetMake         cameraraw.library/CameraRaw_GetMake
+
+   NAME
+        CameraRaw_GetMake -- Retrieve camera manufacturer.
+
+   SYNOPSIS
+        make = CameraRaw_GetMake(handle);
+        const char *CameraRaw_GetMake(APTR);
+
+   FUNCTION
+        Returns a NULL-terminated string containing the manufacturer of the
+        camera used to capture the image.
+
+   INPUTS
+        handle - The CameraRaw context pointer.
+
+   RESULT
+        make - Manufacturer name string, or empty string on failure.
+
+   SEE ALSO
+        CameraRaw_GetModel()
+
+cameraraw.library/CameraRaw_GetModel       cameraraw.library/CameraRaw_GetModel
+
+   NAME
+        CameraRaw_GetModel -- Retrieve camera model.
+
+   SYNOPSIS
+        model = CameraRaw_GetModel(handle);
+        const char *CameraRaw_GetModel(APTR);
+
+   FUNCTION
+        Returns a NULL-terminated string containing the model name of the
+        camera used to capture the image.
+
+   INPUTS
+        handle - The CameraRaw context pointer.
+
+   RESULT
+        model - Camera model name string, or empty string on failure.
+
+   SEE ALSO
+        CameraRaw_GetMake()
+
+cameraraw.library/CameraRaw_ApplySettings cameraraw.library/CameraRaw_ApplySettings
+
+   NAME
+        CameraRaw_ApplySettings -- Apply decoding settings.
+
+   SYNOPSIS
+        CameraRaw_ApplySettings(handle, settings_str);
+        void CameraRaw_ApplySettings(APTR, const char *);
+
+   FUNCTION
+        Parses a key-value list of settings and modifies the processing parameters
+        of the LibRaw engine accordingly.
+
+   INPUTS
+        handle       - The CameraRaw context pointer.
+        settings_str - Semicolon separated pairs of parameters (e.g. key=val;key=val;).
+                       Supported keys:
+                       - scale: Set to 'half', '3x', '4x', or 'screen' to render half size.
+                       - auto_bright: Set to 1/0 to enable/disable auto brightness boost.
+                       - bright: Float multiplier for image brightness.
+                       - wb: Set to 'camera', 'auto', or 'none' to specify white balance.
+                       - exp_correc: Set to 1/0 to enable/disable exposure correction.
+                       - exp_shift: Float indicating exposure shift amount.
+                       - threshold: Float specifying wavelet noise threshold.
+
+   SEE ALSO
+        CameraRaw_Process()
+
+cameraraw.library/CameraRaw_GetAperture   cameraraw.library/CameraRaw_GetAperture
+
+   NAME
+        CameraRaw_GetAperture -- Query lens aperture.
+
+   SYNOPSIS
+        aperture = CameraRaw_GetAperture(handle);
+        float CameraRaw_GetAperture(APTR);
+
+   FUNCTION
+        Queries the image metadata to retrieve the lens aperture (f-number)
+        used during raw capture.
+
+   INPUTS
+        handle - The CameraRaw context pointer.
+
+   RESULT
+        aperture - Lens aperture as float, or 0.0f on error/missing.
+
+   SEE ALSO
+        CameraRaw_GetShutter(), CameraRaw_GetISO()
+
+cameraraw.library/CameraRaw_GetShutter     cameraraw.library/CameraRaw_GetShutter
+
+   NAME
+        CameraRaw_GetShutter -- Query shutter speed.
+
+   SYNOPSIS
+        shutter = CameraRaw_GetShutter(handle);
+        float CameraRaw_GetShutter(APTR);
+
+   FUNCTION
+        Queries the image metadata to retrieve the exposure shutter speed
+        in seconds.
+
+   INPUTS
+        handle - The CameraRaw context pointer.
+
+   RESULT
+        shutter - Exposure time in seconds as float, or 0.0f on error/missing.
+
+   SEE ALSO
+        CameraRaw_GetAperture(), CameraRaw_GetISO()
+
+cameraraw.library/CameraRaw_GetISO             cameraraw.library/CameraRaw_GetISO
+
+   NAME
+        CameraRaw_GetISO -- Query sensor ISO rating.
+
+   SYNOPSIS
+        iso = CameraRaw_GetISO(handle);
+        float CameraRaw_GetISO(APTR);
+
+   FUNCTION
+        Queries the image metadata to retrieve the film/sensor speed ISO rating.
+
+   INPUTS
+        handle - The CameraRaw context pointer.
+
+   RESULT
+        iso - ISO speed rating as float, or 0.0f on error/missing.
+
+   SEE ALSO
+        CameraRaw_GetAperture(), CameraRaw_GetShutter()
+
+cameraraw.library/CameraRaw_GetFocalLength cameraraw.library/CameraRaw_GetFocalLength
+
+   NAME
+        CameraRaw_GetFocalLength -- Query lens focal length.
+
+   SYNOPSIS
+        focalLength = CameraRaw_GetFocalLength(handle);
+        float CameraRaw_GetFocalLength(APTR);
+
+   FUNCTION
+        Queries the image metadata to retrieve the lens focal length in millimeters.
+
+   INPUTS
+        handle - The CameraRaw context pointer.
+
+   RESULT
+        focalLength - Focal length in mm as float, or 0.0f on error/missing.
+
+   SEE ALSO
+        CameraRaw_GetLens()
+
+cameraraw.library/CameraRaw_GetLens           cameraraw.library/CameraRaw_GetLens
+
+   NAME
+        CameraRaw_GetLens -- Query lens descriptor name.
+
+   SYNOPSIS
+        lensName = CameraRaw_GetLens(handle);
+        const char *CameraRaw_GetLens(APTR);
+
+   FUNCTION
+        Queries the metadata to return the camera lens descriptor name string.
+
+   INPUTS
+        handle - The CameraRaw context pointer.
+
+   RESULT
+        lensName - Pointer to the lens name string, or empty string.
+
+   SEE ALSO
+        CameraRaw_GetFocalLength()
+
+cameraraw.library/CameraRaw_GetTimestamp cameraraw.library/CameraRaw_GetTimestamp
+
+   NAME
+        CameraRaw_GetTimestamp -- Query image capture date/time.
+
+   SYNOPSIS
+        timestamp = CameraRaw_GetTimestamp(handle);
+        uint32 CameraRaw_GetTimestamp(APTR);
+
+   FUNCTION
+        Queries the image metadata to retrieve the capture time represented as
+        a standard 32-bit UNIX epoch timestamp.
+
+   INPUTS
+        handle - The CameraRaw context pointer.
+
+   RESULT
+        timestamp - UNIX timestamp as 32-bit unsigned integer, or 0 on error.
+
+   SEE ALSO
+        CameraRaw_GetMake(), CameraRaw_GetModel()

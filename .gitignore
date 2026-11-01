@@ -1,0 +1,77 @@
+# Object and library build artifacts
+*.o
+*.lo
+*.la
+*.a
+*.so
+.libs/
+.deps/
+.dirstamp
+autom4te.cache/
+build_a1222/
+so_locations
+
+# Compiled binaries in bin/ (keep directory placeholder)
+bin/*
+!bin/.keep_me
+
+# AmigaOS shared library binaries
+cameraraw.library/cameraraw.library*
+cameraraw.library/*.std
+cameraraw.library/*.a1222
+tools/detect_a1222
+
+# Temporary debugging dumps and external traces
+DCRaw
+SilkRAW
+SilkRAW.dat
+Snoopy_Output*
+*disasm*.txt
+*.s
+
+# Autotools generated runtime files (keep source templates)
+/Makefile
+config.log
+config.status
+config.cache
+config.lt
+libtool
+libraw.pc
+libraw_r.pc
+
+# Release binary archives & output binaries (keep tools, structures, and docs)
+release/*.lha
+release/*.zip
+release/CameraRawLib_54.1/libs/*
+!release/CameraRawLib_54.1/libs/.gitkeep
+release/CameraRawLib_54.1/A1222/libs/*
+!release/CameraRawLib_54.1/A1222/libs/.gitkeep
+release/CameraRawLib_54.1/C/*
+!release/CameraRawLib_54.1/C/.gitkeep
+release/CameraRawLib_54.1/A1222/C/*
+!release/CameraRawLib_54.1/A1222/C/.gitkeep
+release/CameraRawLib_54.1/Tools/detect_a1222
+!release/CameraRawLib_54.1/Tools/.gitkeep
+!release/CameraRawLib_54.1/Tools/*.info
+
+# Large raw camera sample images (excluded from git upload)
+Examples/
+*.NEF
+*.ORF
+*.RAW
+*.DNG
+*.RW2
+*.PEF
+*.ARW
+*.CR2
+*.cr2
+
+# Python cache & editor backups
+__pycache__/
+*.pyc
+*~
+*.bak
+*.orig
+*.swp
+*.swo
+.DS_Store

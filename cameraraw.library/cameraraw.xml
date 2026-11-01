@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="iso-8859-1"?>
+<!DOCTYPE library SYSTEM "library.dtd">
+<library name="cameraraw" basename="CameraRawBase" basetype="Library" openname="cameraraw.library">
+	<include>libraries/cameraraw.h</include>
+	<interface name="main" version="1.0" struct="CameraRawIFace" prefix="_CameraRaw_" asmprefix="ICameraRaw" global="ICameraRaw">
+		<method name="Obtain" result="uint32"/>
+		<method name="Release" result="uint32"/>
+		<method name="Expunge" result="void" status="unimplemented"/>
+		<method name="Clone" result="struct Interface *" status="unimplemented"/>
+		<method name="CameraRaw_Init" result="APTR">
+			<arg name="flags" type="uint32"/>
+		</method>
+		<method name="CameraRaw_OpenFile" result="int">
+			<arg name="handle" type="APTR"/>
+			<arg name="filename" type="const char *"/>
+		</method>
+		<method name="CameraRaw_Unpack" result="int">
+			<arg name="handle" type="APTR"/>
+		</method>
+		<method name="CameraRaw_Process" result="int">
+			<arg name="handle" type="APTR"/>
+		</method>
+		<method name="CameraRaw_MakeMemImage" result="APTR">
+			<arg name="handle" type="APTR"/>
+			<arg name="errorcode" type="int *"/>
+		</method>
+		<method name="CameraRaw_FreeMemImage" result="void">
+			<arg name="memImage" type="APTR"/>
+		</method>
+		<method name="CameraRaw_Recycle" result="void">
+			<arg name="handle" type="APTR"/>
+		</method>
+		<method name="CameraRaw_Close" result="void">
+			<arg name="handle" type="APTR"/>
+		</method>
+		<method name="CameraRaw_GetMake" result="const char *">
+			<arg name="handle" type="APTR"/>
+		</method>
+		<method name="CameraRaw_GetModel" result="const char *">
+			<arg name="handle" type="APTR"/>
+		</method>
+		<method name="CameraRaw_ApplySettings" result="void">
+			<arg name="handle" type="APTR"/>
+			<arg name="settings_str" type="const char *"/>
+		</method>
+		<method name="CameraRaw_GetAperture" result="float">
+			<arg name="handle" type="APTR"/>
+		</method>
+		<method name="CameraRaw_GetShutter" result="float">
+			<arg name="handle" type="APTR"/>
+		</method>
+		<method name="CameraRaw_GetISO" result="float">
+			<arg name="handle" type="APTR"/>
+		</method>
+		<method name="CameraRaw_GetFocalLength" result="float">
+			<arg name="handle" type="APTR"/>
+		</method>
+		<method name="CameraRaw_GetLens" result="const char *">
+			<arg name="handle" type="APTR"/>
+		</method>
+		<method name="CameraRaw_GetTimestamp" result="uint32">
+			<arg name="handle" type="APTR"/>
+		</method>
+	</interface>
+</library>

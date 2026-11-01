@@ -1,0 +1,98 @@
+dcraw_emu - almost complete dcraw emulator (AmigaOS 4 Port)
+=========================================================
+
+dcraw_emu is a command-line tool that emulates the behavior of Dave Coffin's
+classic dcraw raw photo decoder. It is built on top of the dynamic shared library
+cameraraw.library (LibRaw 0.22.1 wrapper) for AmigaOS 4.
+
+Usage
+-----
+  dcraw_emu [OPTION]... [FILE]...
+
+Options
+-------
+  -c                 Write image data to standard output (stdout)
+  -v                 Verbose: print progress messages (add more -v for more verbosity)
+  -w                 Use camera white balance, if possible
+  -a                 Average the whole image for white balance
+  -A <x y w h>       Average a grey box for white balance
+  -r <r g b g>       Set custom white balance factors
+  +M/-M              Use/don't use an embedded color matrix
+  -C <r b>           Correct chromatic aberration
+  -P <file>          Fix the dead pixels listed in this file
+  -K <file>          Subtract dark frame (16-bit raw PGM)
+  -k <num>           Set the darkness level
+  -S <num>           Set the saturation level
+  -R <num>           Set raw processing options to num
+  -n <num>           Set threshold for wavelet denoising
+  -H [0-9]           Highlight mode (0=clip, 1=unclip, 2=blend, 3+=rebuild)
+  -t [0-7]           Flip image (0=none, 3=180, 5=90CCW, 6=90CW)
+  -o [0-8]           Output colorspace:
+                       0 - Raw
+                       1 - sRGB
+                       2 - Adobe RGB
+                       3 - Wide Gamut RGB
+                       4 - ProPhoto RGB
+                       5 - XYZ
+                       6 - ACES
+                       7 - DCI-P3
+                       8 - Rec2020
+  -d                 Document Mode (no color, no interpolation)
+  -D                 Document Mode without scaling (completely raw)
+  -e                 Extract embedded thumbnail
+  -z                 Change file times to when the photo was taken
+  -i                 Identify files but don't decode/write them
+  -j                 Don't stretch or rotate raw pixels
+  -W                 Don't automatically brighten the image
+  -b <num>           Adjust brightness (default = 1.0)
+  -q N               Set the interpolation quality:
+                       0 - Linear
+                       1 - VNG
+                       2 - PPG
+                       3 - AHD
+                       4 - DCB
+                       11 - DHT
+                       12 - AAHD
+  -h                 Half-size color image (twice as fast as "-q 0")
+  -f                 Interpolate RGGB as four colors
+  -m                 Same as -o 0 (Raw colorspace)
+  -X <num>           Apply a 3x3 median filter to R-G and B-G
+  -s [0..N-1]        Select one raw image from input file
+  -4                 Linear 16-bit, same as "-6 -W -g 1 1"
+  -6                 Write 16-bit output
+  -g pow ts          Set gamma curve to gamma pow and toe slope ts (default = 2.222 4.5)
+  -T                 Write TIFF instead of PPM
+  -G                 Use green_matching() filter
+  -B <x y w h>       Use cropbox
+  -Z <suf>           Output filename generation rules:
+                       .suf => append .suf to input name, keeping existing suffix
+                       suf => replace input filename last extension
+                       - => output to stdout
+                       filename.suf => output to filename.suf
+  -timing            Detailed timing report
+  -fbdd N            0 - disable FBDD noise reduction (default), 1 - light, 2 - full
+  -dcbi N            Number of extra DCB iterations (default - 0)
+  -dcbe              DCB color enhance
+  -aexpo <e p>       Exposure correction
+  -apentax4shot      Enables merge of 4-shot Pentax files
+  -apentax4shotorder Sets Pentax 4-shot alignment order
+  -use-mmap          Use memory mmaped buffer instead of plain FILE I/O
+  -use-mem           Use memory buffer instead of FILE I/O
+  -disars            Do not use RawSpeed library
+  -disinterp         Do not run interpolation step
+  -dsrawrgb1         Disable YCbCr to RGB conversion for sRAW (Cb/Cr interpolation enabled)
+  -dsrawrgb2         Disable YCbCr to RGB conversion for sRAW (Cb/Cr interpolation disabled)
+
+Examples
+--------
+  1. Extract info from raw image:
+     dcraw_emu -i -v photo.cr2
+
+  2. Convert RAW to TIFF with camera white balance:
+     dcraw_emu -w -T photo.nef
+
+  3. Extract thumbnail:
+     dcraw_emu -e photo.arw
+
+  4. Quick half-size render:
+     dcraw_emu -h -T photo.cr2
