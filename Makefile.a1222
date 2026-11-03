@@ -16,6 +16,12 @@ DEFS = -DPACKAGE_NAME=\"LibRaw\" -DPACKAGE_TARNAME=\"libraw\" -DPACKAGE_VERSION=
        -DHAVE_SYS_STAT_H=1 -DHAVE_SYS_TYPES_H=1 -DHAVE_UNISTD_H=1 -DSTDC_HEADERS=1 \
        -DHAVE_DLFCN_H=1 -DHAVE_JPEGLIB_H=1 -DLIBRAW_NOTHREADS
 
+# cameraraw-AmigaOS4 speed-ups (see PERF-REPORT-QEMU.md), bit-identical
+# output. LIBRAW_SCALE_COLORS_LUT is left off here: it works around the
+# classic FPU's int<->float conversion through memory, which SPE does in
+# registers, and it is untested on e500v2.
+OPT_DEFS ?= -DLIBRAW_USE_BUFFERED_FILE_DATASTREAM -DLIBRAW_XTRANS_BOXSUM
+
 INCLUDES = -I. -I./libraw
 
 # A1222 flags:
@@ -24,7 +30,7 @@ INCLUDES = -I. -I./libraw
 # -Wa,-me500: instruct GNU assembler to accept SPE/e500 opcodes
 # -O3: high optimization, enable loop vectorization for paired SPE SIMD
 # -mcrt=newlib -fPIC: AmigaOS4 shared library relocatable code
-CXXFLAGS = -O3 -mcpu=8548 -mabi=spe -mspe=yes -mfloat-gprs=double -Wa,-me500 -mcrt=newlib -fPIC $(DEFS) $(INCLUDES) -w
+CXXFLAGS = -O3 -mcpu=8548 -mabi=spe -mspe=yes -mfloat-gprs=double -Wa,-me500 -mcrt=newlib -fPIC $(DEFS) $(OPT_DEFS) $(INCLUDES) -w
 
 # -athread=single: newlib libgcc_eh otherwise pulls __gthread_* symbols that
 # have no implementation without a thread library, and the tools fail to link.

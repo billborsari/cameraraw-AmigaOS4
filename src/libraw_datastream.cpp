@@ -148,6 +148,233 @@ int LibRaw_abstract_datastream::jpeg_src(void *jpegdata)
 }
 
 
+// == LibRaw_buffered_file_datastream (see libraw_datastream.h) ==
+
+LibRaw_buffered_file_datastream::LibRaw_buffered_file_datastream(const char *fname)
+    : f(0), filename(fname ? fname : ""), _fsize(0), _fpos(0), _bufstart(0), _buflen(0), _buf(0), _eof(0)
+{
+  if (filename.size() == 0)
+    return;
+  f = fopen(filename.c_str(), "rb");
+  if (!f)
+    return;
+  /* We buffer ourselves; a second stdio buffer would only add a copy. */
+  setvbuf(f, NULL, _IONBF, 0);
+  _buf = (unsigned char *)malloc(LIBRAW_BUFFERED_FILE_CHUNK);
+  if (!_buf || fseek(f, 0, SEEK_END))
+  {
+    fclose(f);
+    f = 0;
+    return;
+  }
+  long sz = ftell(f);
+  _fsize = sz > 0 ? sz : 0;
+}
+
+LibRaw_buffered_file_datastream::~LibRaw_buffered_file_datastream()
+{
+  if (f)
+    fclose(f);
+  free(_buf);
+}
+
+/* Load the chunk that starts at off. */
+bool LibRaw_buffered_file_datastream::fill(INT64 off)
+{
+  _bufstart = off;
+  _buflen = 0;
+  if (off < 0 || off >= _fsize)
+    return false;
+  if (fseek(f, (long)off, SEEK_SET))
+    return false;
+  size_t want = LIBRAW_BUFFERED_FILE_CHUNK;
+  if ((INT64)want > _fsize - off)
+    want = size_t(_fsize - off);
+  _buflen = fread(_buf, 1, want, f);
+  return _buflen > 0;
+}
+
+int LibRaw_buffered_file_datastream::get_char_slow()
+{
+  if (!f)
+    throw LIBRAW_EXCEPTION_IO_EOF;
+  if (!fill(_fpos))
+  {
+    _eof = 1;
+    return -1;
+  }
+  return _buf[_fpos++ - _bufstart];
+}
+
+int LibRaw_buffered_file_datastream::read(void *ptr, size_t size, size_t nmemb)
+{
+  if (!f)
+    throw LIBRAW_EXCEPTION_IO_EOF;
+  if (size == 0 || nmemb == 0)
+    return 0;
+  size_t want = size * nmemb;
+  if (_fpos >= _fsize)
+  {
+    _eof = 1;
+    return 0;
+  }
+  if ((INT64)want > _fsize - _fpos)
+  {
+    want = size_t(_fsize - _fpos);
+    _eof = 1;
+  }
+  unsigned char *dst = (unsigned char *)ptr;
+  size_t got = 0;
+  while (got < want)
+  {
+    INT64 off = _fpos - _bufstart;
+    if (off >= 0 && off < (INT64)_buflen)
+    {
+      /* Copies stay below LIBRAW_BUFFERED_FILE_CHUNK, well under the size
+       * at which the QEMU guest's newlib memcpy misbehaves. */
+      size_t n = _buflen - size_t(off);
+      if (n > want - got)
+        n = want - got;
+      memcpy(dst + got, _buf + off, n);
+      got += n;
+      _fpos += n;
+      continue;
+    }
+    size_t left = want - got;
+    if (left >= LIBRAW_BUFFERED_FILE_CHUNK)
+    {
+      /* Large read: straight into the caller's buffer, whole chunks only. */
+      size_t direct = left - left % LIBRAW_BUFFERED_FILE_CHUNK;
+      if (fseek(f, (long)_fpos, SEEK_SET))
+        break;
+      size_t n = fread(dst + got, 1, direct, f);
+      got += n;
+      _fpos += n;
+      if (n < direct)
+        break;
+      continue;
+    }
+    if (!fill(_fpos))
+      break;
+  }
+  return int(got / size);
+}
+
+int LibRaw_buffered_file_datastream::eof()
+{
+  if (!f)
+    throw LIBRAW_EXCEPTION_IO_EOF;
+  return _eof;
+}
+
+int LibRaw_buffered_file_datastream::seek(INT64 o, int whence)
+{
+  if (!f)
+    throw LIBRAW_EXCEPTION_IO_EOF;
+  INT64 np;
+  switch (whence)
+  {
+  case SEEK_CUR:
+    np = _fpos + o;
+    break;
+  case SEEK_END:
+    np = _fsize + o;
+    break;
+  case SEEK_SET:
+  default:
+    np = o;
+    break;
+  }
+  /* Like fseeko(): positions past the end are fine, negative ones fail. */
+  if (np < 0)
+    return 1;
+  _fpos = np;
+  _eof = 0;
+  return 0;
+}
+
+/* fgets() semantics, as LibRaw_bigfile_datastream::gets (the stream
+ * LibRaw 0.22 uses by default, LIBRAW_NO_IOSTREAMS_DATASTREAM). */
+char *LibRaw_buffered_file_datastream::gets(char *str, int sz)
+{
+#ifdef __NEWLIB__
+  if (sz < 2) /* newlib's fgets() gives up on these without touching str */
+    return NULL;
+#endif
+  if (sz < 1)
+    return NULL;
+  if (!f)
+    throw LIBRAW_EXCEPTION_IO_EOF;
+  int n = 0;
+  while (n < sz - 1)
+  {
+    int c = get_char();
+    if (c < 0)
+      break;
+    str[n++] = (char)c;
+    if (c == '\n')
+      break;
+  }
+  if (n == 0 && sz > 1)
+    return NULL;
+  str[n] = 0;
+  return str;
+}
+
+/* fscanf(f, "%d" or "%f", val), as LibRaw_bigfile_datastream::scanf_one:
+ * skip white space, take the longest number-shaped run of characters, push
+ * back the character that ended it. */
+int LibRaw_buffered_file_datastream::scanf_one(const char *fmt, void *val)
+{
+  if (!f)
+    throw LIBRAW_EXCEPTION_IO_EOF;
+  int c;
+  do
+    c = get_char();
+  while (c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\f' || c == '\v');
+  if (c < 0)
+    return EOF;
+  bool isint = strcmp(fmt, "%d") == 0;
+  char tok[64];
+  int n = 0;
+  bool digits = false, dot = false, exp = false;
+  for (;;)
+  {
+    bool ok = false;
+    if ((c == '+' || c == '-') && (n == 0 || (!isint && (tok[n - 1] == 'e' || tok[n - 1] == 'E'))))
+      ok = true;
+    else if (c >= '0' && c <= '9')
+      ok = digits = true;
+    else if (!isint && c == '.' && !dot && !exp)
+      ok = dot = true;
+    else if (!isint && (c == 'e' || c == 'E') && digits && !exp)
+      ok = exp = true;
+    if (!ok || n == (int)sizeof(tok) - 1)
+    {
+      if (c >= 0)
+        _fpos--; /* ungetc */
+      break;
+    }
+    tok[n++] = (char)c;
+    c = get_char();
+  }
+  /* BSD-derived stdio (newlib, macOS) gives back an unusable tail: a sign or
+   * dot with no digits is all pushed back (match failure), and an exponent
+   * with no digits ("1e", "1e+") is pushed back and the mantissa used. */
+  if (!digits)
+  {
+    _fpos -= n;
+    return 0;
+  }
+  while (n > 0 && (tok[n - 1] == '+' || tok[n - 1] == '-' || tok[n - 1] == 'e' || tok[n - 1] == 'E'))
+  {
+    n--;
+    _fpos--;
+  }
+  tok[n] = 0;
+  return sscanf(tok, isint ? "%d" : "%f", val) == 1 ? 1 : 0;
+}
+
 #ifndef LIBRAW_NO_IOSTREAMS_DATASTREAM
 // == LibRaw_file_datastream ==
 

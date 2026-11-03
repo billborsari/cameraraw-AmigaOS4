@@ -141,6 +141,51 @@ void LibRaw::convert_to_rgb_loop(float out_cam[3][4])
   }
 }
 
+/* cameraraw-AmigaOS4: the two loops below compute, per channel, a pure
+ * function of the 16-bit input value: int((v - cblack[c]) * scale_mul[c])
+ * clipped, with 0 left at 0 when there is a black level. Tabulating it once
+ * per channel gives bit-identical output and replaces an int->float
+ * conversion, a float multiply and a float->int conversion per sample with a
+ * table load. On 32-bit PowerPC both conversions go through memory (no
+ * fcfid / direct GPR<->FPR moves), and under QEMU every float op is a helper
+ * call. The tables only cover 0..max(maximum, data_maximum) (8-32 KB per
+ * channel for 12-14 bit data) so they stay in cache; larger values (rare)
+ * take the arithmetic path. Enabled with LIBRAW_SCALE_COLORS_LUT. */
+static inline ushort scale_one(int val, int black, float mul, bool bl)
+{
+  if (bl)
+  {
+    if (!val)
+      return 0;
+    val -= black;
+  }
+  val = int(val * mul);
+  return CLIP(val);
+}
+
+bool LibRaw::scale_colors_lut(float scale_mul[4], unsigned size)
+{
+  unsigned lim = MAX((unsigned)C.maximum, (unsigned)C.data_maximum) + 1;
+  if (lim < 2 || lim > 0x10000)
+    lim = 0x10000;
+  ushort *lut = (ushort *)malloc(4 * lim * sizeof(ushort));
+  if (!lut)
+    return false;
+  const bool bl = C.cblack[0] || C.cblack[1] || C.cblack[2] || C.cblack[3];
+  for (unsigned c = 0; c < 4; c++)
+    for (unsigned v = 0; v < lim; v++)
+      lut[c * lim + v] = scale_one(v, C.cblack[c], scale_mul[c], bl);
+  ushort(*img)[4] = imgdata.image;
+  for (unsigned i = 0; i < size; i++)
+    for (unsigned c = 0; c < 4; c++)
+    {
+      unsigned v = img[i][c];
+      img[i][c] = v < lim ? lut[c * lim + v] : scale_one(v, C.cblack[c], scale_mul[c], bl);
+    }
+  free(lut);
+  return true;
+}
+
 void LibRaw::scale_colors_loop(float scale_mul[4])
 {
   unsigned size = S.iheight * S.iwidth;
@@ -160,6 +205,14 @@ void LibRaw::scale_colors_loop(float scale_mul[4])
         imgdata.image[i][c] = CLIP(val);
       }
     }
+  }
+#ifdef LIBRAW_SCALE_COLORS_LUT
+  else if (size >= 0x20000 && scale_colors_lut(scale_mul, size))
+#else
+  else if (0)
+#endif
+  {
+    /* done with lookup tables (cameraraw-AmigaOS4) */
   }
   else if (C.cblack[0] || C.cblack[1] || C.cblack[2] || C.cblack[3])
   {

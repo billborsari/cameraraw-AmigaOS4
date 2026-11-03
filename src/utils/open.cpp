@@ -159,6 +159,9 @@ int LibRaw::open_file(const char *fname)
     {
 #ifdef LIBRAW_WIN32_CALLS
         stream = new LibRaw_bigfile_buffered_datastream(fname);
+#elif defined(LIBRAW_USE_BUFFERED_FILE_DATASTREAM)
+        /* cameraraw-AmigaOS4: see LibRaw_buffered_file_datastream */
+        stream = new LibRaw_buffered_file_datastream(fname);
 #else
         stream = new LibRaw_bigfile_datastream(fname);
 #endif
