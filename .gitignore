@@ -9,6 +9,7 @@
 .dirstamp
 autom4te.cache/
 build_a1222/
+build_std/
 so_locations
 
 # Compiled binaries in bin/ (keep directory placeholder)
@@ -42,17 +43,17 @@ libraw_r.pc
 # Release binary archives & output binaries (keep tools, structures, and docs)
 release/*.lha
 release/*.zip
-release/CameraRawLib_54.1/libs/*
-!release/CameraRawLib_54.1/libs/.gitkeep
-release/CameraRawLib_54.1/A1222/libs/*
-!release/CameraRawLib_54.1/A1222/libs/.gitkeep
-release/CameraRawLib_54.1/C/*
-!release/CameraRawLib_54.1/C/.gitkeep
-release/CameraRawLib_54.1/A1222/C/*
-!release/CameraRawLib_54.1/A1222/C/.gitkeep
-release/CameraRawLib_54.1/Tools/detect_a1222
-!release/CameraRawLib_54.1/Tools/.gitkeep
-!release/CameraRawLib_54.1/Tools/*.info
+release/CameraRawLib_*/libs/*
+!release/CameraRawLib_*/libs/.gitkeep
+release/CameraRawLib_*/A1222/libs/*
+!release/CameraRawLib_*/A1222/libs/.gitkeep
+release/CameraRawLib_*/C/*
+!release/CameraRawLib_*/C/.gitkeep
+release/CameraRawLib_*/A1222/C/*
+!release/CameraRawLib_*/A1222/C/.gitkeep
+release/CameraRawLib_*/Tools/detect_a1222
+!release/CameraRawLib_*/Tools/.gitkeep
+!release/CameraRawLib_*/Tools/*.info
 
 # Large raw camera sample images (excluded from git upload)
 Examples/
@@ -75,3 +76,4 @@ __pycache__/
 *.swp
 *.swo
 .DS_Store
+

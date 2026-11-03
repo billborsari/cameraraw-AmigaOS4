@@ -5,7 +5,7 @@ import re
 import subprocess
 
 work_dir = os.path.dirname(os.path.abspath(__file__))
-release_dir = os.path.join(work_dir, "release/CameraRawLib_54.1")
+release_dir = os.path.join(work_dir, "release/CameraRawLib_54.2")
 
 os.makedirs(os.path.join(release_dir, "libs"), exist_ok=True)
 os.makedirs(os.path.join(release_dir, "A1222/libs"), exist_ok=True)
@@ -73,7 +73,7 @@ if os.path.exists(xml_src):
 # 5. Copy Icons
 icon_templates = [
     ("/opt/code/AmigaOS4-datatypes/cameraraw.datatype/release/Cameraraw_dt_54.2.info",
-     os.path.join(work_dir, "release/CameraRawLib_54.1.info")),
+     os.path.join(work_dir, "release/CameraRawLib_54.2.info")),
     ("/opt/code/AmigaOS4-datatypes/cameraraw.datatype/release/Cameraraw_dt_54.2/install cameraraw datatype.info",
      os.path.join(release_dir, "Install cameraraw.library.info")),
     ("/opt/code/AmigaOS4-datatypes/cameraraw.datatype/release/Cameraraw_dt_54.2/Tools.info",
@@ -145,13 +145,13 @@ pycache_dir = os.path.join(release_dir, "__pycache__")
 if os.path.exists(pycache_dir):
     shutil.rmtree(pycache_dir)
 
-lha_file = os.path.join(work_dir, "release/CameraRawLib_54.1.lha")
+lha_file = os.path.join(work_dir, "release/CameraRawLib_54.2.lha")
 if os.path.exists(lha_file):
     os.remove(lha_file)
 
-cmd = ["lha", "a", "-x0", "CameraRawLib_54.1.lha", "CameraRawLib_54.1", "CameraRawLib_54.1.info"]
+cmd = ["lha", "a", "-x0", "CameraRawLib_54.2.lha", "CameraRawLib_54.2", "CameraRawLib_54.2.info"]
 res = subprocess.call(cmd, cwd=os.path.join(work_dir, "release"))
 if res == 0:
-    print("SUCCESS: CameraRawLib_54.1.lha created successfully!")
+    print("SUCCESS: CameraRawLib_54.2.lha created successfully!")
 else:
     print("ERROR: lha exited with code %d" % res)

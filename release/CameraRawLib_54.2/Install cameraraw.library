@@ -1,0 +1,483 @@
+# cameraraw.library 54.2 Modern Installation Script
+# For AmigaOS 4 Installation Utility
+from installer import *
+import os
+import sys
+import re
+
+script_dir = ""
+try:
+    if "__file__" in globals() and __file__:
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+    elif len(sys.argv) > 0 and sys.argv[0]:
+        script_dir = os.path.dirname(os.path.abspath(sys.argv[0]))
+except Exception:
+    pass
+
+def run_shell(cmd):
+    try:
+        import amiga
+        amiga.system(cmd)
+        return True
+    except Exception:
+        pass
+    try:
+        if os.system is not None:
+            os.system(cmd)
+            return True
+    except Exception:
+        pass
+    return False
+
+def my_basename(path):
+    norm = path.replace('\\', '/')
+    if '/' in norm:
+        return norm.rsplit('/', 1)[1]
+    return path
+
+def my_join(a, b):
+    a = a.replace('\\', '/')
+    b = b.replace('\\', '/')
+    if not a:
+        return b
+    if a.endswith('/') or a.endswith(':'):
+        return a + b
+    return a + '/' + b
+
+def get_source_path(rel_path):
+    rel_norm = rel_path.replace('\\', '/')
+    if os.path.exists(rel_norm):
+        return rel_norm
+    if script_dir:
+        cand = my_join(script_dir, rel_norm)
+        if os.path.exists(cand):
+            return cand
+    cand_prog = my_join("PROGDIR:", rel_norm)
+    if os.path.exists(cand_prog):
+        return cand_prog
+    return rel_norm
+
+created_dirs = {}
+
+def ensure_dir(dst_dir):
+    if not dst_dir:
+        return
+    norm = dst_dir.replace('\\', '/')
+    if norm.endswith(':'):
+        return
+    if norm in created_dirs:
+        return
+    if os.path.exists(norm):
+        created_dirs[norm] = True
+        return
+    run_shell('MakeDir "%s" ALL >NIL:' % norm)
+    created_dirs[norm] = True
+
+def safe_copy_file(src, dst):
+    actual_src = get_source_path(src)
+    dst_dir = os.path.dirname(dst.replace('\\', '/'))
+    ensure_dir(dst_dir)
+
+    copied = False
+    try:
+        f_in = open(actual_src, "rb")
+        data = f_in.read()
+        f_in.close()
+
+        f_out = open(dst, "wb")
+        f_out.write(data)
+        f_out.close()
+        copied = True
+    except Exception:
+        pass
+
+    run_shell('Copy "%s" TO "%s" CLONE QUIET >NIL:' % (actual_src, dst))
+    return copied or os.path.exists(dst)
+
+def copy_file_and_info(src_file, dst_dir):
+    filename = my_basename(src_file)
+    dst_file = my_join(dst_dir, filename)
+
+    ensure_dir(dst_dir)
+    safe_copy_file(src_file, dst_file)
+
+    src_info = src_file + ".info"
+    actual_info = get_source_path(src_info)
+    if os.path.exists(actual_info):
+        dst_info = dst_file + ".info"
+        safe_copy_file(actual_info, dst_info)
+
+def check_exists(path):
+    try:
+        if os.path.exists(path):
+            return True
+    except Exception:
+        pass
+    try:
+        f = open(path, "rb")
+        f.close()
+        return True
+    except Exception:
+        pass
+    return False
+
+app_name = "cameraraw.library"
+version = "54.2"
+welcome_text = "Welcome to the %s %s Installer.\n\nThis script will install the cameraraw.library shared RAW decoding engine to LIBS: and its accompanying dcraw command-line tools to C: (or your preferred location)." % (app_name, version)
+finish_text = "%s %s has been installed successfully!\n\nThe shared library is ready for use by applications and datatypes, and the dcraw CLI tools are ready in your command path." % (app_name, version)
+
+# 1. Welcome Page
+welcome_page = NewPage(WELCOME)
+SetString(welcome_page, "message", welcome_text)
+
+# 2. Readme Page
+readme_page = NewPage(README)
+
+# --- Hardware Detection (A1222 vs Standard PPC) ---
+def detect_is_a1222(dest_dir="SYS:"):
+    for helper_path in [
+        "Tools/detect_a1222", "PROGDIR:Tools/detect_a1222", "./Tools/detect_a1222",
+        "detect_a1222", "PROGDIR:detect_a1222"
+    ]:
+        try:
+            actual = get_source_path(helper_path)
+            if os.path.exists(actual):
+                rc = os.system('"%s" >NIL:' % actual)
+                if rc == 0:
+                    return True
+                elif rc == 5 or rc == 1280:
+                    return False
+        except Exception:
+            pass
+
+    for kl_path in [my_join(dest_dir, "Kickstart/Kicklayout"), "SYS:Kickstart/Kicklayout", "DEVS:Kicklayout"]:
+        try:
+            if os.path.exists(kl_path):
+                f = open(kl_path, "r")
+                content = f.read().upper()
+                f.close()
+                if "A1222" in content or "TABOR" in content:
+                    return True
+        except Exception:
+            pass
+
+    for env_var in ["SYS/MACHINE", "sys/machine", "SYS/MODEL", "sys/model", "SYS/CPU", "sys/cpu"]:
+        env_path = "ENV:" + env_var
+        try:
+            if os.path.exists(env_path):
+                f = open(env_path, "r")
+                content = f.read().upper()
+                f.close()
+                if "A1222" in content or "TABOR" in content or "8548" in content or "E500" in content:
+                    return True
+        except Exception:
+            pass
+
+    return False
+
+is_a1222_detected = detect_is_a1222()
+is_a1222_selected_state = is_a1222_detected
+
+# 3. Architecture Selection Page
+arch_page = NewPage(GUI)
+cb_std_default = 0 if is_a1222_detected else 1
+cb_a1222_default = 1 if is_a1222_detected else 0
+
+cb_std = None
+cb_a1222 = None
+
+def std_clicked(page_id, element_id, *args):
+    global is_a1222_selected_state
+    is_a1222_selected_state = False
+    try:
+        SetUIAttr(page_id, cb_std, GUI_CHECKED, 1)
+        SetUIAttr(page_id, cb_a1222, GUI_CHECKED, 0)
+    except Exception:
+        pass
+
+def a1222_clicked(page_id, element_id, *args):
+    global is_a1222_selected_state
+    is_a1222_selected_state = True
+    try:
+        SetUIAttr(page_id, cb_std, GUI_CHECKED, 0)
+        SetUIAttr(page_id, cb_a1222, GUI_CHECKED, 1)
+    except Exception:
+        pass
+
+StartGUI(arch_page)
+BeginGroup(label="Target Hardware Optimization")
+if is_a1222_detected:
+    AddLabel("Hardware Detection: AmigaOne A1222 / Tabor detected!")
+    AddLabel("The A1222 SPE hardware-accelerated build has been selected as the default below.")
+else:
+    AddLabel("Hardware Detection: Standard PowerPC system detected (X5000 / X1000 / Sam460 / G3 / G4).")
+    AddLabel("The Standard build has been selected as the default below.")
+
+AddLabel(" ")
+AddLabel("Choose the version of cameraraw.library and tools to install:")
+AddLabel(" ")
+
+cb_std = AddCheckBox("Standard Build (Classic PowerPC FPU)", 1, cb_std_default, onclick=std_clicked)
+AddLabel("   - For AmigaOne X5000, X1000, Sam460ex, Pegasos II, and classic G3/G4 systems.")
+AddLabel("   - Uses standard PowerPC hardware FPU instructions.")
+AddLabel(" ")
+
+cb_a1222 = AddCheckBox("AmigaOne A1222 Build (Tabor e500v2 SPE Hardware Accelerated)", 1, cb_a1222_default, onclick=a1222_clicked)
+AddLabel("   - Compiled specifically for AmigaOne A1222 (PowerPC e500v2 core, -mcpu=8548).")
+AddLabel("   - Employs native hardware SPE instructions for demosaicing and color processing,")
+AddLabel("     bypassing kernel trap emulation and providing maximum native performance.")
+
+EndGroup()
+EndGUI()
+
+try:
+    SetUIAttr(arch_page, cb_std, GUI_CHECKED, cb_std_default)
+    SetUIAttr(arch_page, cb_a1222, GUI_CHECKED, cb_a1222_default)
+except Exception:
+    pass
+
+# 4. Library Destination Page
+dest_page = NewPage(DESTINATION)
+SetString(dest_page, "message", "Select system destination drive where cameraraw.library will be installed (default LIBS: / SYS:):")
+SetString(dest_page, "destination", "LIBS:")
+
+# 5. Commands Destination Page (Allows user override for C:)
+cmd_dest_page = NewPage(DESTINATION)
+SetString(cmd_dest_page, "message", "Select destination directory for dcraw command-line tools (default C:):")
+SetString(cmd_dest_page, "destination", "C:")
+
+# 6. Optional Components Selection Page
+options_page = NewPage(GUI)
+cb_tools = None
+cb_sdk = None
+cb_docs = None
+
+has_sdk = os.path.exists("SDK:include") or os.path.exists("SDK:")
+cb_sdk_default = 1 if has_sdk else 0
+
+StartGUI(options_page)
+BeginGroup(label="Components to Install")
+AddLabel("Select which components to install:")
+AddLabel(" ")
+
+cb_tools = AddCheckBox("Install dcraw CLI tools (dcraw_emu, raw-identify, simple_dcraw, test-library)", 1, 1)
+AddLabel("   - Command-line raw decoding, metadata identification, and benchmarking tools.")
+AddLabel(" ")
+
+cb_sdk = AddCheckBox("Install C/C++ Developer SDK headers & XML interface (SDK:)", 1, cb_sdk_default)
+AddLabel("   - Installs cameraraw.h to SDK:include/include_h/libraries/ and cameraraw.xml to SDK:xml/")
+AddLabel(" ")
+
+cb_docs = AddCheckBox("Install Documentation (HELP:)", 1, 1)
+AddLabel("   - Reference manual, AutoDoc, and dcraw guide.")
+
+EndGroup()
+EndGUI()
+
+try:
+    SetUIAttr(options_page, cb_tools, GUI_CHECKED, 1)
+    SetUIAttr(options_page, cb_sdk, GUI_CHECKED, cb_sdk_default)
+    SetUIAttr(options_page, cb_docs, GUI_CHECKED, 1)
+except Exception:
+    pass
+
+# 7. Progress Page
+try:
+    install_page = NewPage(PROCESSING)
+except Exception:
+    install_page = NewPage(INSTALL)
+
+SetString(install_page, "message", "Installing cameraraw.library and selected components...\nPlease wait while files are installed and verified.")
+
+# 8. Finish Page
+final_page = NewPage(FINISH)
+SetString(final_page, "message", finish_text)
+
+# --- MD5 Calculation Helper ---
+def get_md5(path):
+    try:
+        try:
+            import hashlib
+            h = hashlib.md5()
+        except ImportError:
+            import md5
+            h = md5.new()
+        
+        f = open(path, "rb")
+        try:
+            while True:
+                chunk = f.read(4096)
+                if not chunk:
+                    break
+                h.update(chunk)
+        finally:
+            f.close()
+        return h.hexdigest()
+    except Exception:
+        return None
+
+# --- Main Installation Action ---
+installed_done = False
+
+def perform_installation(*args, **kwargs):
+    global installed_done
+    if installed_done:
+        return True
+    installed_done = True
+
+    print("\n[Installer] Starting file installation...")
+
+    # Library destination
+    try:
+        lib_dest = GetString(dest_page, "destination")
+    except Exception:
+        lib_dest = "LIBS:"
+    if not lib_dest:
+        lib_dest = "LIBS:"
+    lib_dest_norm = lib_dest.replace('\\', '/')
+    if lib_dest_norm.upper() == "SYS:" or lib_dest_norm.upper() == "SYS:/":
+        final_lib_dir = "SYS:Libs"
+    elif lib_dest_norm.endswith(":") or lib_dest_norm.endswith("/"):
+        final_lib_dir = lib_dest_norm.rstrip('/')
+    else:
+        final_lib_dir = lib_dest_norm
+
+    # Commands destination (default C:)
+    try:
+        cmd_dest = GetString(cmd_dest_page, "destination")
+    except Exception:
+        cmd_dest = "C:"
+    if not cmd_dest:
+        cmd_dest = "C:"
+    cmd_dest_norm = cmd_dest.replace('\\', '/')
+    if cmd_dest_norm.endswith(":") or cmd_dest_norm.endswith("/"):
+        final_cmd_dir = cmd_dest_norm.rstrip('/')
+    else:
+        final_cmd_dir = cmd_dest_norm
+
+    # Architecture selection
+    is_a1222 = is_a1222_selected_state
+    try:
+        if arch_page and cb_a1222:
+            is_a1222 = (GetUIAttr(arch_page, cb_a1222, GUI_CHECKED) != 0)
+    except Exception:
+        pass
+
+    # Options selection
+    install_tools = True
+    install_sdk = (cb_sdk_default != 0)
+    install_docs = True
+    try:
+        if options_page:
+            if cb_tools: install_tools = (GetUIAttr(options_page, cb_tools, GUI_CHECKED) != 0)
+            if cb_sdk:   install_sdk = (GetUIAttr(options_page, cb_sdk, GUI_CHECKED) != 0)
+            if cb_docs:  install_docs = (GetUIAttr(options_page, cb_docs, GUI_CHECKED) != 0)
+    except Exception:
+        pass
+
+    # 1. Install Library
+    ensure_dir(final_lib_dir)
+    if is_a1222 and os.path.exists(get_source_path("A1222/libs/cameraraw.library")):
+        src_lib = "A1222/libs/cameraraw.library"
+        arch_name = "AmigaOne A1222 SPE"
+    else:
+        src_lib = "libs/cameraraw.library"
+        arch_name = "Standard PowerPC"
+
+    print("[Installer] Installing %s cameraraw.library to %s..." % (arch_name, final_lib_dir))
+    copy_file_and_info(src_lib, final_lib_dir)
+
+    # 2. Install CLI Tools
+    tools_list = ["dcraw_emu", "raw-identify", "simple_dcraw", "test-library"]
+    if install_tools:
+        ensure_dir(final_cmd_dir)
+        print("[Installer] Installing %s CLI tools to %s..." % (arch_name, final_cmd_dir))
+        for tool in tools_list:
+            if is_a1222 and os.path.exists(get_source_path("A1222/C/" + tool)):
+                src_tool = "A1222/C/" + tool
+            else:
+                src_tool = "C/" + tool
+            copy_file_and_info(src_tool, final_cmd_dir)
+
+    # 3. Install SDK Headers and XML
+    if install_sdk:
+        print("[Installer] Installing SDK Developer files...")
+        sdk_include_dir = "SDK:include/include_h/libraries"
+        sdk_xml_dir = "SDK:xml"
+        ensure_dir(sdk_include_dir)
+        ensure_dir(sdk_xml_dir)
+        copy_file_and_info("include/libraries/cameraraw.h", sdk_include_dir)
+        copy_file_and_info("include/xml/cameraraw.xml", sdk_xml_dir)
+
+    # 4. Install Documentation
+    if install_docs:
+        print("[Installer] Installing Documentation...")
+        doc_dest = "HELP:cameraraw.library"
+        ensure_dir(doc_dest)
+        for doc_file in [
+            "Documentation/libs/cameraraw.library/cameraraw.doc",
+            "Documentation/libs/cameraraw.library/COPYRIGHT.txt",
+            "Documentation/libs/cameraraw.library/LICENSE.LGPL.txt",
+            "Documentation/libs/cameraraw.library/LICENSE.CDDL.txt",
+            "dcraw_emu.txt",
+            "readme.txt"
+        ]:
+            if os.path.exists(get_source_path(doc_file)):
+                copy_file_and_info(doc_file, doc_dest)
+
+    # 5. MD5 Verification
+    print("[Installer] Verifying installed files...")
+    expected_md5_std = {
+        my_join(final_lib_dir, "cameraraw.library"): "af0b67a6f4de2f2903c76d3c08798848",
+        my_join(final_cmd_dir, "dcraw_emu"): "786863fd5e24dfb7a78c41b7b0741aec",
+        my_join(final_cmd_dir, "raw-identify"): "0b264f65f667001d4dfd873d1b47375a",
+        my_join(final_cmd_dir, "simple_dcraw"): "4f85672f94bea38e6a9290c359df62e1",
+        my_join(final_cmd_dir, "test-library"): "c850fee18e4b4c158111bc667714aca8",
+    }
+
+    expected_md5_a1222 = {
+        my_join(final_lib_dir, "cameraraw.library"): "a50a8cb89bac136fcbee37fb54b19812",
+        my_join(final_cmd_dir, "dcraw_emu"): "4ea70db39024743ae32e19283042d289",
+        my_join(final_cmd_dir, "raw-identify"): "ee5a209e4eb2a077481432be6c73d5ab",
+        my_join(final_cmd_dir, "simple_dcraw"): "912b04816b82aa92b998111efde25ef3",
+        my_join(final_cmd_dir, "test-library"): "2eca9162261a271cce116622b1af44c4",
+    }
+
+    expected = expected_md5_a1222 if is_a1222 else expected_md5_std
+    all_ok = True
+    for path, exp_hash in expected.items():
+        if exp_hash.startswith("STD_") or exp_hash.startswith("A1222_"):
+            continue
+        if not check_exists(path):
+            if not install_tools and path.startswith(final_cmd_dir):
+                continue
+            print("[Installer] Warning: Missing file: %s" % path)
+            all_ok = False
+            continue
+        calc_hash = get_md5(path)
+        if calc_hash and calc_hash.lower() != exp_hash.lower():
+            print("[Installer] Hash MISMATCH for %s: expected %s, got %s" % (path, exp_hash, calc_hash))
+            all_ok = False
+        else:
+            print("[Installer] Verified OK: %s" % my_basename(path))
+
+    if all_ok:
+        print("[Installer] Installation and verification completed successfully!")
+    else:
+        print("[Installer] Installation completed with warnings.")
+
+    return True
+
+# Hook the installation action
+try:
+    if install_page:
+        SetPageAction(install_page, perform_installation)
+except Exception:
+    pass
+
+# Run Installer
+try:
+    RunInstaller()
+except Exception:
+    # If run in non-GUI environment, perform installation directly
+    perform_installation()

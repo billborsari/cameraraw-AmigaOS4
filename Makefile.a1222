@@ -19,11 +19,12 @@ DEFS = -DPACKAGE_NAME=\"LibRaw\" -DPACKAGE_TARNAME=\"libraw\" -DPACKAGE_VERSION=
 INCLUDES = -I. -I./libraw
 
 # A1222 flags:
-# -mcpu=8548: target e500v2 core, enable SPE floating-point instructions
+# -mcpu=8548: target e500v2 core
+# -mabi=spe -mspe=yes -mfloat-gprs=double: hardware double-precision floating point via 64-bit paired GPRs
 # -Wa,-me500: instruct GNU assembler to accept SPE/e500 opcodes
 # -O3: high optimization, enable loop vectorization for paired SPE SIMD
 # -mcrt=newlib -fPIC: AmigaOS4 shared library relocatable code
-CXXFLAGS = -O3 -mcpu=8548 -Wa,-me500 -mcrt=newlib -fPIC $(DEFS) $(INCLUDES) -w
+CXXFLAGS = -O3 -mcpu=8548 -mabi=spe -mspe=yes -mfloat-gprs=double -Wa,-me500 -mcrt=newlib -fPIC $(DEFS) $(INCLUDES) -w
 
 SOURCES = \
 	src/libraw_c_api.cpp \

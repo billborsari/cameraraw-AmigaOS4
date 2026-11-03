@@ -36,10 +36,15 @@ typedef struct
     unsigned char data[1];
 } libraw_processed_image_t;
 
-static double get_elapsed_ms(struct timeval *start, struct timeval *end)
+static unsigned long get_elapsed_ms(struct timeval *start, struct timeval *end)
 {
-    return (double)(end->tv_sec - start->tv_sec) * 1000.0 +
-           (double)(end->tv_usec - start->tv_usec) / 1000.0;
+    long sec = end->tv_sec - start->tv_sec;
+    long usec = end->tv_usec - start->tv_usec;
+    if (usec < 0) {
+        sec--;
+        usec += 1000000;
+    }
+    return (unsigned long)(sec * 1000 + usec / 1000);
 }
 
 int main(int argc, char **argv)
@@ -51,34 +56,30 @@ int main(int argc, char **argv)
         printf("Usage: %s <rawfile> [library_name_or_path]\n\n", argv[0]);
         printf("Examples:\n");
         printf("  %s photo.nef\n", argv[0]);
-        printf("  %s photo.nef cameraraw.library.a1222\n", argv[0]);
-        printf("  %s photo.nef PROGDIR:cameraraw.library.a1222\n", argv[0]);
         printf("  %s photo.nef LIBS:cameraraw.library\n", argv[0]);
+        printf("  %s photo.nef cameraraw.library.a1222\n", argv[0]);
         return 1;
     }
 
     const char *rawfile = argv[1];
     const char *custom_lib = (argc >= 3) ? argv[2] : NULL;
 
-    const char *candidate_paths[] = {
-        custom_lib,
-#if defined(__SPE__) || defined(__E500__)
-        "PROGDIR:cameraraw.library.a1222",
-        "cameraraw.library.a1222",
-        "PROGDIR:A1222/Libs/cameraraw.library",
-        "A1222/Libs/cameraraw.library",
-#endif
-        "PROGDIR:cameraraw.library",
-        "cameraraw.library",
-        "LIBS:cameraraw.library",
-        NULL
-    };
+    const char *candidate_paths[10];
+    int num_paths = 0;
+    if (custom_lib && custom_lib[0]) {
+        candidate_paths[num_paths++] = custom_lib;
+    }
+    candidate_paths[num_paths++] = "LIBS:cameraraw.library";
+    candidate_paths[num_paths++] = "PROGDIR:cameraraw.library.a1222";
+    candidate_paths[num_paths++] = "cameraraw.library.a1222";
+    candidate_paths[num_paths++] = "PROGDIR:cameraraw.library";
+    candidate_paths[num_paths++] = "cameraraw.library";
+    candidate_paths[num_paths] = NULL;
 
     struct Library *CameraRawBase = NULL;
     const char *loaded_path = NULL;
 
     for (int i = 0; candidate_paths[i] != NULL; i++) {
-        if (!candidate_paths[i]) continue;
         CameraRawBase = IExec->OpenLibrary(candidate_paths[i], 1);
         if (!CameraRawBase) {
             CameraRawBase = IExec->OpenLibrary(candidate_paths[i], 0);
@@ -93,7 +94,7 @@ int main(int argc, char **argv)
         printf("ERROR: Could not open cameraraw.library!\n");
         printf("Tried searching:\n");
         for (int i = 0; candidate_paths[i] != NULL; i++) {
-            if (candidate_paths[i]) printf("  - %s\n", candidate_paths[i]);
+            printf("  - %s\n", candidate_paths[i]);
         }
         return 1;
     }
@@ -137,7 +138,7 @@ int main(int argc, char **argv)
         IExec->CloseLibrary(CameraRawBase);
         return 1;
     }
-    printf("      OK (took %.1f ms)\n", get_elapsed_ms(&t_step_start, &t_step_end));
+    printf("      OK (took %lu ms)\n", get_elapsed_ms(&t_step_start, &t_step_end));
 
     /* Display Metadata */
     const char *make = ICameraRaw->CameraRaw_GetMake(ICameraRaw, handle);
@@ -150,13 +151,24 @@ int main(int argc, char **argv)
     printf("      Camera: %s %s\n", (make && make[0]) ? make : "Unknown", (model && model[0]) ? model : "");
     if (lens && lens[0]) printf("      Lens  : %s\n", lens);
     if (aperture > 0.0f || shutter > 0.0f || iso > 0.0f) {
-        printf("      EXIF  : f/%.1f, ", aperture);
-        if (shutter > 0.0f && shutter < 1.0f) {
-            printf("1/%.0f s, ", 1.0f / shutter);
-        } else {
-            printf("%.2f s, ", shutter);
+        printf("      EXIF  : ");
+        if (aperture > 0.0f) {
+            unsigned int ap_int = (unsigned int)aperture;
+            unsigned int ap_frac = (unsigned int)(aperture * 10.0f) % 10;
+            printf("f/%u.%u, ", ap_int, ap_frac);
         }
-        printf("ISO %.0f\n", iso);
+        if (shutter > 0.0f && shutter < 1.0f) {
+            unsigned int inv_shutter = (unsigned int)(1.0f / shutter + 0.5f);
+            printf("1/%u s, ", inv_shutter);
+        } else if (shutter >= 1.0f) {
+            unsigned int sh_int = (unsigned int)shutter;
+            unsigned int sh_frac = (unsigned int)(shutter * 10.0f) % 10;
+            printf("%u.%u s, ", sh_int, sh_frac);
+        }
+        if (iso > 0.0f) {
+            printf("ISO %u", (unsigned int)iso);
+        }
+        printf("\n");
     }
 
     /* 2. Unpack Raw Data */
@@ -172,7 +184,7 @@ int main(int argc, char **argv)
         IExec->CloseLibrary(CameraRawBase);
         return 1;
     }
-    printf("      OK (took %.1f ms)\n", get_elapsed_ms(&t_step_start, &t_step_end));
+    printf("      OK (took %lu ms)\n", get_elapsed_ms(&t_step_start, &t_step_end));
 
     /* 3. Process Image (Demosaic, Color Matrix, White Balance) */
     printf("[3/4] Processing image (Demosaic / Matrix / WB) ...\n");
@@ -187,8 +199,8 @@ int main(int argc, char **argv)
         IExec->CloseLibrary(CameraRawBase);
         return 1;
     }
-    double process_ms = get_elapsed_ms(&t_step_start, &t_step_end);
-    printf("      OK (took %.1f ms - %.2f s)\n", process_ms, process_ms / 1000.0);
+    unsigned long process_ms = get_elapsed_ms(&t_step_start, &t_step_end);
+    printf("      OK (took %lu ms - %lu.%02lu s)\n", process_ms, process_ms / 1000, (process_ms % 1000) / 10);
 
     /* 4. Render Memory Image */
     printf("[4/4] Generating RGB memory image ...\n");
@@ -200,21 +212,23 @@ int main(int argc, char **argv)
         printf("ERROR: CameraRaw_MakeMemImage failed with code %d: %s\n",
                mem_error, ICameraRaw->CameraRaw_StrError(ICameraRaw, mem_error));
     } else {
-        printf("      OK (took %.1f ms)\n", get_elapsed_ms(&t_step_start, &t_step_end));
+        printf("      OK (took %lu ms)\n", get_elapsed_ms(&t_step_start, &t_step_end));
         printf("\nImage Details:\n");
         printf("  Width x Height: %d x %d pixels\n", img->width, img->height);
         printf("  Color Channels: %d\n", img->colors);
         printf("  Bits per Channel: %d-bit\n", img->bits);
-        printf("  Buffer Size: %u bytes (%.2f MB)\n", img->data_size, (double)img->data_size / (1024.0 * 1024.0));
+        unsigned long mb_int = img->data_size / (1024 * 1024);
+        unsigned long mb_frac = ((img->data_size % (1024 * 1024)) * 100) / (1024 * 1024);
+        printf("  Buffer Size: %u bytes (%lu.%02lu MB)\n", img->data_size, mb_int, mb_frac);
 
         ICameraRaw->CameraRaw_FreeMemImage(ICameraRaw, (APTR)img);
     }
 
     gettimeofday(&t_end, NULL);
-    double total_ms = get_elapsed_ms(&t_start, &t_end);
+    unsigned long total_ms = get_elapsed_ms(&t_start, &t_end);
 
     printf("========================================================\n");
-    printf(" TOTAL DECODING TIME: %.2f seconds (%.1f ms)\n", total_ms / 1000.0, total_ms);
+    printf(" TOTAL DECODING TIME: %lu.%02lu seconds (%lu ms)\n", total_ms / 1000, (total_ms % 1000) / 10, total_ms);
     printf("========================================================\n");
 
     /* Cleanup */

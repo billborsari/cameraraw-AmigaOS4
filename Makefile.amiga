@@ -54,3 +54,4 @@ clean:
 	$(MAKE) -C cameraraw.library clean
 	$(MAKE) -C tools clean
 	rm -rf bin/dcraw* bin/raw-* bin/simple_* bin/test-library*
+

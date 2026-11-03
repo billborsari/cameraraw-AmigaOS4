@@ -30,7 +30,7 @@ struct Interface *INewlib = NULL;
 
 /* Name and Version of Library */
 static const char libName[] = "cameraraw.library";
-static const char libVer[] = "$VER: cameraraw.library 54.1 (29.10.2026)";
+static const char libVer[] = "$VER: cameraraw.library 54.2 (" __DATE__ " " __TIME__ ")";
 
 /* Forward Declarations */
 extern "C" {
@@ -245,7 +245,7 @@ static struct Library * libInit(struct Library *base, APTR segList, struct Inter
     crBase->libNode.lib_Node.ln_Name = (char *)libName;
     crBase->libNode.lib_Flags        = LIBF_CHANGED | LIBF_SUMUSED;
     crBase->libNode.lib_Version      = 54;
-    crBase->libNode.lib_Revision     = 1;
+    crBase->libNode.lib_Revision     = 2;
     crBase->libNode.lib_IdString     = (char *)libVer + 6;
 
     crBase->segList = (BPTR)segList;
