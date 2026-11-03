@@ -19,6 +19,26 @@
 #include "../../internal/dcraw_defs.h"
 
 #define fcol(row, col) xtrans[(row + 6) % 6][(col + 6) % 6]
+
+#ifdef LIBRAW_XTRANS_INTCMP
+/* Order-preserving float <-> int mapping for finite, non-NaN floats
+ * (negative values have their magnitude bits flipped). may_alias: the keys
+ * are stored over the float drv[] buffer. */
+typedef int __attribute__((__may_alias__)) xtrans_key;
+static inline int xtrans_fkey(float f)
+{
+  int k;
+  memcpy(&k, &f, sizeof k);
+  return k >= 0 ? k : k ^ 0x7FFFFFFF;
+}
+static inline float xtrans_keyf(int k)
+{
+  float f;
+  k = k >= 0 ? k : k ^ 0x7FFFFFFF;
+  memcpy(&f, &k, sizeof f);
+  return f;
+}
+#endif
 /*
    Frank Markesteijn's algorithm for Fuji X-Trans sensors
  */
@@ -173,6 +193,20 @@ void LibRaw::xtrans_interpolate(int passes)
 
   size_t buffer_size = LIBRAW_AHD_TILE * LIBRAW_AHD_TILE * (ndir * 11 + 6);
   char** buffers = malloc_omp_buffers(buffer_count, buffer_size);
+#ifdef LIBRAW_XTRANS_BOXSUM
+#if defined(LIBRAW_USE_OPENMP)
+#error LIBRAW_XTRANS_BOXSUM: per-thread box buffers not implemented
+#endif
+  /* 5x5 sums of homo[] are at most 25 * 9 = 225: one byte each. */
+  unsigned char(*box)[LIBRAW_AHD_TILE][LIBRAW_AHD_TILE] =
+      (unsigned char(*)[LIBRAW_AHD_TILE][LIBRAW_AHD_TILE])malloc(ndir * LIBRAW_AHD_TILE * LIBRAW_AHD_TILE);
+  if (!box)
+  {
+    free_omp_buffers(buffers, buffer_count);
+    throw LIBRAW_EXCEPTION_ALLOC;
+  }
+  int vsum[LIBRAW_AHD_TILE + 8];
+#endif
 
 #if defined(LIBRAW_USE_OPENMP)
 # pragma omp parallel for schedule(dynamic) default(none) firstprivate(buffers, allhex, passes, sgrow, sgcol, ndir) shared(dir) 
@@ -370,6 +404,40 @@ void LibRaw::xtrans_interpolate(int passes)
 
             /* Build homogeneity maps from the derivatives:			*/
             memset(homo, 0, ndir * LIBRAW_AHD_TILE * LIBRAW_AHD_TILE);
+#ifdef LIBRAW_XTRANS_INTCMP
+            /* cameraraw-AmigaOS4: same comparisons on integers. drv[] holds
+             * finite floats (no NaN, no -0), and xtrans_fkey() maps them to
+             * ints in the same order, so "drv <= tr" == "key <= key(tr)".
+             * The keys overwrite drv[] in place (it isn't used again); only
+             * tr *= 8 stays a float op. 9 * ndir float compares per pixel
+             * become integer ones: a big saving under QEMU, where each FP
+             * instruction is a helper call. */
+            {
+                xtrans_key(*drvk)[LIBRAW_AHD_TILE][LIBRAW_AHD_TILE] =
+                    (xtrans_key(*)[LIBRAW_AHD_TILE][LIBRAW_AHD_TILE])drv;
+                for (int d = 0; d < ndir; d++)
+                    for (int row = 3; row < mrow - 3; row++)
+                        for (int col = 3; col < mcol - 3; col++)
+                            drvk[d][row][col] = xtrans_fkey(drv[d][row][col]);
+                for (int row = 4; row < mrow - 4; row++)
+                    for (int col = 4; col < mcol - 4; col++)
+                    {
+                        int trk = drvk[0][row][col];
+                        for (int d = 1; d < ndir; d++)
+                            if (trk > drvk[d][row][col])
+                                trk = drvk[d][row][col];
+                        trk = xtrans_fkey(xtrans_keyf(trk) * 8);
+                        for (int dd = 0; dd < ndir; dd++)
+                        {
+                            int n = 0;
+                            for (int v = -1; v <= 1; v++)
+                                for (int h = -1; h <= 1; h++)
+                                    n += drvk[dd][row + v][col + h] <= trk;
+                            homo[dd][row][col] = n;
+                        }
+                    }
+            }
+#else
             for (int row = 4; row < mrow - 4; row++)
                 for (int col = 4; col < mcol - 4; col++)
                 {
@@ -385,21 +453,53 @@ void LibRaw::xtrans_interpolate(int passes)
                                 if (drv[dd][row + v][col + h] <= tr)
                                     homo[dd][row][col]++;
                 }
+#endif
 
             /* Average the most homogeneous pixels for the final result:	*/
             if (height - top < LIBRAW_AHD_TILE + 4)
                 mrow = height - top + 2;
             if (width - left < LIBRAW_AHD_TILE + 4)
                 mcol = width - left + 2;
+#ifdef LIBRAW_XTRANS_BOXSUM
+            /* cameraraw-AmigaOS4: the 5x5 sums of homo[] below, computed
+             * once per tile as a separable running box filter (5+2 adds per
+             * pixel and direction instead of 25). Integer sums of the same
+             * values, so the result is identical. */
+            {
+                const int r0 = MIN(top, 8), r1 = mrow - 8;
+                const int c0 = MIN(left, 8), c1 = mcol - 8;
+                for (int d = 0; d < ndir && c1 > c0; d++)
+                    for (int row = r0; row < r1; row++)
+                    {
+                        for (int col = c0 - 2; col < c1 + 2; col++)
+                            vsum[col] = homo[d][row - 2][col] + homo[d][row - 1][col] +
+                                        homo[d][row][col] + homo[d][row + 1][col] +
+                                        homo[d][row + 2][col];
+                        int sum = vsum[c0 - 2] + vsum[c0 - 1] + vsum[c0] + vsum[c0 + 1] + vsum[c0 + 2];
+                        box[d][row][c0] = sum;
+                        for (int col = c0 + 1; col < c1; col++)
+                        {
+                            sum += vsum[col + 2] - vsum[col - 3];
+                            box[d][row][col] = sum;
+                        }
+                    }
+            }
+#endif
             for (int row = MIN(top, 8); row < mrow - 8; row++)
                 for (int col = MIN(left, 8); col < mcol - 8; col++)
                 {
                     int v;
                     int hm[8];
+#ifdef LIBRAW_XTRANS_BOXSUM
+                    (void)v;
+                    for (int d = 0; d < ndir; d++)
+                        hm[d] = box[d][row][col];
+#else
                     for (int d = 0; d < ndir; d++)
                         for (v = -2, hm[d] = 0; v <= 2; v++)
                             for (int h = -2; h <= 2; h++)
                                 hm[d] += homo[d][row + v][col + h];
+#endif
                     for (int d = 0; d < ndir - 4; d++)
                         if (hm[d] < hm[d + 4])
                             hm[d] = 0;
@@ -430,6 +530,9 @@ void LibRaw::xtrans_interpolate(int passes)
 #endif
 
     free_omp_buffers(buffers, buffer_count);
+#ifdef LIBRAW_XTRANS_BOXSUM
+    free(box);
+#endif
 
     border_interpolate(8);
 }

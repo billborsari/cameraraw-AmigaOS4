@@ -166,6 +166,59 @@ public:
 };
 #endif
 
+/* LibRaw_buffered_file_datastream: plain-stdio file stream with its own read
+ * buffer and its own file position (cameraraw-AmigaOS4 addition).
+ *
+ * open_file() normally uses LibRaw_bigfile_datastream: newlib stdio with
+ * a BUFSIZ (1 KB) buffer, one getc() library call per byte, and an fseeko()
+ * that drops the buffer, so parsing and decoding turn into thousands of
+ * small DOS Read/Seek packets to the filesystem on AmigaOS. This class reads
+ * LIBRAW_BUFFERED_FILE_CHUNK bytes per refill, answers tell()/seek()/
+ * get_char() from memory, and reads large requests straight into the
+ * caller's buffer. gets()/scanf_one() keep the fgets()/fscanf() semantics
+ * of LibRaw_bigfile_datastream so metadata parsing is unchanged.
+ * open_file() uses it when LIBRAW_USE_BUFFERED_FILE_DATASTREAM is defined
+ * (Windows builds use LibRaw_bigfile_buffered_datastream the same way). */
+#ifndef LIBRAW_BUFFERED_FILE_CHUNK
+#define LIBRAW_BUFFERED_FILE_CHUNK (64 * 1024)
+#endif
+class DllDef LibRaw_buffered_file_datastream : public LibRaw_abstract_datastream
+{
+public:
+  LibRaw_buffered_file_datastream(const char *fname);
+  virtual ~LibRaw_buffered_file_datastream();
+  virtual int valid() { return f ? 1 : 0; }
+  virtual int read(void *ptr, size_t size, size_t nmemb);
+  virtual int eof();
+  virtual int seek(INT64 o, int whence);
+  virtual INT64 tell() { return _fpos; }
+  virtual INT64 size() { return _fsize; }
+  virtual int get_char()
+  {
+    INT64 off = _fpos - _bufstart;
+    if (off >= 0 && off < (INT64)_buflen)
+    {
+      _fpos++;
+      return _buf[off];
+    }
+    return get_char_slow();
+  }
+  virtual char *gets(char *str, int sz);
+  /* eof() is feof(): set by a read that ran into the end, cleared by seek(). */
+  virtual int scanf_one(const char *fmt, void *val);
+  virtual const char *fname() { return filename.size() > 0 ? filename.c_str() : NULL; }
+
+protected:
+  int get_char_slow();
+  bool fill(INT64 off);
+  FILE *f;
+  std::string filename;
+  INT64 _fsize, _fpos, _bufstart;
+  size_t _buflen;
+  unsigned char *_buf;
+  int _eof;
+};
+
 #if defined (LIBRAW_NO_IOSTREAMS_DATASTREAM)  && defined (LIBRAW_WIN32_CALLS)
 
 struct DllDef LibRaw_bufio_params

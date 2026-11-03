@@ -16,10 +16,24 @@ DEFS = -DPACKAGE_NAME=\"LibRaw\" -DPACKAGE_TARNAME=\"libraw\" -DPACKAGE_VERSION=
        -DHAVE_SYS_STAT_H=1 -DHAVE_SYS_TYPES_H=1 -DHAVE_UNISTD_H=1 -DSTDC_HEADERS=1 \
        -DHAVE_DLFCN_H=1 -DHAVE_JPEGLIB_H=1 -DLIBRAW_NOTHREADS
 
+# cameraraw-AmigaOS4 speed-ups (see PERF-REPORT-QEMU.md); each one gives
+# bit-identical output to the plain LibRaw code it replaces:
+#   LIBRAW_USE_BUFFERED_FILE_DATASTREAM  64 KB-buffered file stream
+#   LIBRAW_XTRANS_BOXSUM                 separable 5x5 sums in X-Trans demosaic
+#   LIBRAW_SCALE_COLORS_LUT              per-channel table in scale_colors
+# Off by default (faster only under QEMU so far):
+#   LIBRAW_XTRANS_INTCMP                 integer compares in the X-Trans
+#                                        homogeneity map
+OPT_DEFS ?= -DLIBRAW_USE_BUFFERED_FILE_DATASTREAM -DLIBRAW_XTRANS_BOXSUM -DLIBRAW_SCALE_COLORS_LUT
+
 INCLUDES = -I. -I./libraw
 
 # Standard PowerPC flags:
-CXXFLAGS = -O2 -mcrt=newlib -fPIC $(DEFS) $(INCLUDES) -w
+CXXFLAGS = -O2 -mcrt=newlib -fPIC $(DEFS) $(OPT_DEFS) $(INCLUDES) -w
+
+# -athread=single: newlib libgcc_eh otherwise pulls __gthread_* symbols that
+# have no implementation without a thread library, and the tools fail to link.
+LDFLAGS ?= -athread=single
 
 SOURCES = \
 	src/libraw_c_api.cpp \
@@ -110,17 +124,17 @@ tools: $(TARGET) bin/dcraw_emu bin/raw-identify bin/simple_dcraw
 
 bin/dcraw_emu: samples/dcraw_emu.cpp $(TARGET)
 	@$(MKDIR_P) bin
-	$(CXX) $(CXXFLAGS) $< -o $@ -Llib -lraw_std -ljpeg -lz -lm
+	$(CXX) $(CXXFLAGS) $< -o $@ $(LDFLAGS) -Llib -lraw_std -ljpeg -lz -lm
 	$(CROSS_COMPILE)strip --strip-unneeded $@
 
 bin/raw-identify: samples/raw-identify.cpp $(TARGET)
 	@$(MKDIR_P) bin
-	$(CXX) $(CXXFLAGS) $< -o $@ -Llib -lraw_std -ljpeg -lz -lm
+	$(CXX) $(CXXFLAGS) $< -o $@ $(LDFLAGS) -Llib -lraw_std -ljpeg -lz -lm
 	$(CROSS_COMPILE)strip --strip-unneeded $@
 
 bin/simple_dcraw: samples/simple_dcraw.cpp $(TARGET)
 	@$(MKDIR_P) bin
-	$(CXX) $(CXXFLAGS) $< -o $@ -Llib -lraw_std -ljpeg -lz -lm
+	$(CXX) $(CXXFLAGS) $< -o $@ $(LDFLAGS) -Llib -lraw_std -ljpeg -lz -lm
 	$(CROSS_COMPILE)strip --strip-unneeded $@
 
 $(TARGET): $(OBJS)
@@ -131,7 +145,9 @@ $(TARGET): $(OBJS)
 
 $(BUILD_DIR)/%.o: src/%.cpp
 	@$(MKDIR_P) $(dir $@)
-	$(CXX) $(CXXFLAGS) -c $< -o $@
+	$(CXX) $(CXXFLAGS) -MMD -MP -c $< -o $@
+
+-include $(OBJS:.o=.d)
 
 clean:
 	$(RM) -r $(BUILD_DIR) $(TARGET) bin/dcraw_emu bin/raw-identify bin/simple_dcraw

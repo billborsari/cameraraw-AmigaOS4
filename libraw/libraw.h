@@ -374,6 +374,7 @@ protected:
   virtual void convert_to_rgb_loop(float out_cam[3][4]);
   virtual void lin_interpolate_loop(int *code, int size);
   virtual void scale_colors_loop(float scale_mul[4]);
+  bool scale_colors_lut(float scale_mul[4], unsigned size); /* cameraraw-AmigaOS4 */
 
   /* Fujifilm compressed decoder public interface (to make parallel decoder) */
   virtual void

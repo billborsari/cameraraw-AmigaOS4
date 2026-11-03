@@ -55,6 +55,10 @@ int _CameraRaw_CameraRaw_OpenFile(struct CameraRawIFace *Self, APTR handle, cons
 
 #include <exec/tasks.h>
 
+#ifndef __amigaos4__
+/* Host build (perf/host): reference output and profiling only. */
+static int RunOnLargeStack(int (*func)(LibRaw *), LibRaw *raw) { return func(raw); }
+#else
 static int RunOnLargeStack(int (*func)(LibRaw *), LibRaw *raw)
 {
     uint32 stack_size = 1024 * 1024; // 1MB stack
@@ -103,6 +107,7 @@ static int RunOnLargeStack(int (*func)(LibRaw *), LibRaw *raw)
     IExec->FreeVec(new_stack);
     return res;
 }
+#endif /* __amigaos4__ */
 
 static int do_unpack(LibRaw *raw)
 {

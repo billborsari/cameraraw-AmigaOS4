@@ -4,7 +4,7 @@
 SHELL = /bin/bash
 CROSS_COMPILE ?= ppc-amigaos-
 
-.PHONY: all standard a1222 library tools release clean help
+.PHONY: all standard standard-autotools a1222 library tools release clean help
 
 help:
 	@echo "cameraraw-AmigaOS4 Build System"
@@ -27,7 +27,15 @@ Makefile: configure
 		CFLAGS="-O2 -mcrt=newlib -athread=single" \
 		LDFLAGS="-mcrt=newlib -athread=single"
 
-standard: Makefile
+# Builds lib/libraw_std.a (what cameraraw.library links) and the CLI tools
+# with Makefile.std. The autotools route below (Makefile from ./configure)
+# still works where libtool can find the SDK's .la/.so files, but in the
+# walkero/amigagccondocker image it fails to link the tools
+# (/SDK/local/newlib/lib/libjpeg.so, static link of libstdc++.so).
+standard:
+	$(MAKE) -f Makefile.std all tools
+
+standard-autotools: Makefile
 	$(MAKE) -f Makefile
 	$(CROSS_COMPILE)strip --strip-unneeded bin/dcraw_emu bin/raw-identify bin/simple_dcraw 2>/dev/null || true
 
