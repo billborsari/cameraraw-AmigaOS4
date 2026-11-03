@@ -77,3 +77,9 @@ __pycache__/
 *.swo
 .DS_Store
 
+cameraraw.library/cameraraw.gen.ld
+perf/host/out/
+perf/variants/
+build_*/
+lib/libraw_*.a
+*.d

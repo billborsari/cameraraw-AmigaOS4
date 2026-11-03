@@ -21,6 +21,10 @@ INCLUDES = -I. -I./libraw
 # Standard PowerPC flags:
 CXXFLAGS = -O2 -mcrt=newlib -fPIC $(DEFS) $(INCLUDES) -w
 
+# -athread=single: newlib libgcc_eh otherwise pulls __gthread_* symbols that
+# have no implementation without a thread library, and the tools fail to link.
+LDFLAGS ?= -athread=single
+
 SOURCES = \
 	src/libraw_c_api.cpp \
 	src/libraw_datastream.cpp \
@@ -110,17 +114,17 @@ tools: $(TARGET) bin/dcraw_emu bin/raw-identify bin/simple_dcraw
 
 bin/dcraw_emu: samples/dcraw_emu.cpp $(TARGET)
 	@$(MKDIR_P) bin
-	$(CXX) $(CXXFLAGS) $< -o $@ -Llib -lraw_std -ljpeg -lz -lm
+	$(CXX) $(CXXFLAGS) $< -o $@ $(LDFLAGS) -Llib -lraw_std -ljpeg -lz -lm
 	$(CROSS_COMPILE)strip --strip-unneeded $@
 
 bin/raw-identify: samples/raw-identify.cpp $(TARGET)
 	@$(MKDIR_P) bin
-	$(CXX) $(CXXFLAGS) $< -o $@ -Llib -lraw_std -ljpeg -lz -lm
+	$(CXX) $(CXXFLAGS) $< -o $@ $(LDFLAGS) -Llib -lraw_std -ljpeg -lz -lm
 	$(CROSS_COMPILE)strip --strip-unneeded $@
 
 bin/simple_dcraw: samples/simple_dcraw.cpp $(TARGET)
 	@$(MKDIR_P) bin
-	$(CXX) $(CXXFLAGS) $< -o $@ -Llib -lraw_std -ljpeg -lz -lm
+	$(CXX) $(CXXFLAGS) $< -o $@ $(LDFLAGS) -Llib -lraw_std -ljpeg -lz -lm
 	$(CROSS_COMPILE)strip --strip-unneeded $@
 
 $(TARGET): $(OBJS)
@@ -131,7 +135,9 @@ $(TARGET): $(OBJS)
 
 $(BUILD_DIR)/%.o: src/%.cpp
 	@$(MKDIR_P) $(dir $@)
-	$(CXX) $(CXXFLAGS) -c $< -o $@
+	$(CXX) $(CXXFLAGS) -MMD -MP -c $< -o $@
+
+-include $(OBJS:.o=.d)
 
 clean:
 	$(RM) -r $(BUILD_DIR) $(TARGET) bin/dcraw_emu bin/raw-identify bin/simple_dcraw
