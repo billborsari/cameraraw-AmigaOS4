@@ -83,8 +83,12 @@ init.a1222.o: init.cpp cameraraw.h
 cameraraw_api.a1222.o: cameraraw_api.cpp cameraraw.h
 	$(CXX) $(CXXFLAGS_A1222) -c $< -o $@
 
-tests: test-library test-library.a1222
+tests: test-library test-library.a1222 raw-bench
 
+# raw-bench: per-stage timings + output CRCs through the library (see samples/raw-bench.cpp)
+raw-bench: ../samples/raw-bench.cpp
+	$(CXX) -O2 -mcrt=newlib -athread=single -I.. -I../libraw $< -o ../bin/$@ -lauto
+	$(STRIP) --strip-unneeded ../bin/$@
 
 test-library: ../samples/test-library.cpp
 	$(CXX) -O2 -mcrt=newlib -athread=single $< -o ../bin/$@ -lauto
@@ -95,6 +99,6 @@ test-library.a1222: ../samples/test-library.cpp
 	$(STRIP) --strip-unneeded ../bin/$@
 
 clean:
-	$(RM) $(LDSCRIPT) $(TARGET_STD) $(TARGET_STD).std $(TARGET_A1222) $(OBJS_STD) $(OBJS_A1222) ../bin/test-library ../bin/test-library.a1222
+	$(RM) $(LDSCRIPT) $(TARGET_STD) $(TARGET_STD).std $(TARGET_A1222) $(OBJS_STD) $(OBJS_A1222) ../bin/test-library ../bin/test-library.a1222 ../bin/raw-bench
 
-.PHONY: all standard a1222 tests test-library test-library.a1222 clean
+.PHONY: all standard a1222 tests test-library test-library.a1222 raw-bench clean

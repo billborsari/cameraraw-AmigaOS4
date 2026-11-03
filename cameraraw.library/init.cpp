@@ -29,7 +29,12 @@ struct Interface *INewlib = NULL;
 }
 
 /* Name and Version of Library */
-static const char libName[] = "cameraraw.library";
+#ifndef CAMERARAW_LIBNAME
+#define CAMERARAW_LIBNAME "cameraraw.library"
+#endif
+/* CAMERARAW_LIBNAME: perf/build-variant.sh gives A/B builds their own names
+ * so OpenLibrary() by path can't hand back an already resident copy. */
+static const char libName[] = CAMERARAW_LIBNAME;
 static const char libVer[] = "$VER: cameraraw.library 54.2 (" __DATE__ " " __TIME__ ")";
 
 /* Forward Declarations */
